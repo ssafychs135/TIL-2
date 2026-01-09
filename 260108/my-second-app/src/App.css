@@ -9,6 +9,25 @@
   font-family: Arial, sans-serif;
 }
 
+/* 네비게이션 스타일 추가 */
+.nav-bar {
+  margin-bottom: 20px;
+  padding: 10px;
+  border-bottom: 2px solid #eee;
+}
+
+.nav-link {
+  margin: 0 10px;
+  text-decoration: none;
+  color: #555;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.nav-link:hover {
+  color: #646cff;
+}
+
 h1 {
   color: #333;
 }

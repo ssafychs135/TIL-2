@@ -122,5 +122,693 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
 | 구분 | Vue (`watch`) | React (`useEffect`) |
 | :--- | :--- | :--- |
-| **감지** | `watch(todos, (newVal) => { ... })` | `useEffect(() => { ... }, [todos])` |
-| **로직 분리** | Composables (`useTodo.js`) | Custom Hook (`useLocalStorage.ts`) |
+| 감지 | `watch(todos, (newVal) => { ... })` | `useEffect(() => { ... }, [todos])` |
+| 로직 분리 | Composables (`useTodo.js`) | Custom Hook (`useLocalStorage.ts`) |
+
+---
+
+### Step 6: useEffect의 생명주기와 부수 효과 (Side Effects)
+`useEffect`는 컴포넌트의 렌더링 이후에 발생하는 '부수 효과'를 처리합니다. Vue의 생명주기 훅(Life Cycle Hooks)과 Watcher의 기능을 하나로 합친 것과 같습니다.
+
+**실제 코드:**
+```tsx
+useEffect(() => {
+  // 1. Mount 시점 (onMounted) 또는 의존성 변경 시 (watch)
+  console.log('효과 발생!');
+
+  return () => {
+    // 2. Unmount 시점 (onUnmounted) 또는 다음 효과 발생 전 정리 (Cleanup)
+    console.log('정리 작업 수행 (Cleanup)');
+  };
+}, [storedValue]); // 의존성 배열
+```
+
+#### 💡 핵심 포인트: 의존성 배열 (Dependency Array)
+1. **`[]` (빈 배열)**: 컴포넌트가 처음 나타날 때(Mount) 딱 한 번만 실행됩니다. (Vue의 `onMounted`)
+2. **`[value]` (값이 있는 배열)**: `value`가 변경될 때마다 실행됩니다. (Vue의 `watch`)
+3. **배열 생략**: 모든 렌더링 시점마다 실행됩니다. (성능 주의)
+
+#### 🔍 Q&A: 괄호(`[]`) 안에는 무엇을 넣나요?
+네, 맞습니다! 이 배열은 **"감시할 상태 목록(Dependency List)"**입니다. React에게 **"이 안에 적힌 값(State, Props)이 변할 때만 효과를 실행해줘!"**라고 명령하는 것입니다.
+
+- **작동 원리**: React는 렌더링 전후의 배열 내 값들을 비교(Diffing)합니다.
+- **예시**: `[count, userId]`라고 적으면, `count` **또는** `userId` 중 하나라도 값이 바뀌면 `useEffect`가 다시 실행됩니다.
+- **비유**: "경비원에게 `count`라는 값이 움직이면 보고해!"라고 지시하는 것과 같습니다. (빈 배열 `[]`은 "아무것도 감시하지 말고 처음에만 보고해"라는 뜻이 됩니다.)
+
+#### 🔄 Vue와 비교 정리
+
+| 구분 | Vue | React (`useEffect`) |
+| :--- | :--- | :--- |
+| **Mount** | `onMounted(() => ...)` | `useEffect(() => ..., [])` |
+| **Update** | `watch(val, () => ...)` | `useEffect(() => ..., [val])` |
+| **Unmount** | `onUnmounted(() => ...)` | `useEffect(() => { return () => ... }, [])` |
+| **정리(Cleanup)** | N/A (명시적 훅 필요) | `return` 키워드로 함수 반환 |
+
+#### ⚠️ 주의: Cleanup 함수(return)를 생략하면?
+만약 `return` 함수를 작성하지 않거나 비워두면, 컴포넌트가 사라지거나(Unmount) 업데이트되기 전에 **기존 작업이 정리되지 않습니다.**
+
+**발생할 수 있는 문제:**
+1. **메모리 누수 (Memory Leak)**: `setInterval`이나 외부 라이브러리 인스턴스가 계속 메모리에 남아 성능을 저하시킵니다.
+2. **이벤트 중복 등록**: `window.addEventListener`가 렌더링될 때마다 계속 쌓여, 클릭 한 번에 함수가 수십 번 실행될 수 있습니다.
+3. **업데이트 에러**: 이미 사라진 컴포넌트의 상태를 변경하려고 시도하여 콘솔 경고나 에러가 발생합니다.
+
+**❌ 나쁜 예시 (타이머 미해제):**
+```tsx
+useEffect(() => {
+  const timer = setInterval(() => {
+    console.log('타이머 작동 중...'); // 컴포넌트가 사라져도 영원히 실행됨 😱
+  }, 1000);
+  
+  // return () => clearInterval(timer); // 이 정리가 꼭 필요합니다!
+}, []);
+```
+
+#### ❓ 정리할 내용이 없는 경우 (Optional Return)
+모든 `useEffect`가 `return`을 가질 필요는 없습니다. 정리(Cleanup)가 필요 없는 단순한 작업이라면 함수만 실행하고 아무것도 반환하지 않아도 됩니다. (이 경우 `undefined`를 반환하는 것과 같습니다.)
+
+**1. return이 필요 없는 경우 (단순 Side Effect):**
+- 콘솔 로그 출력 (`console.log`)
+- 로컬 스토리지에 데이터 저장 (`localStorage.setItem`)
+- API 데이터 가져오기 (단순 호출)
+- 문서 제목 변경 (`document.title = ...`)
+
+**2. return이 꼭 필요한 경우 (정리가 필요한 Side Effect):**
+- 타이머 (`setTimeout`, `setInterval`) 해제
+- 이벤트 리스너 (`addEventListener`) 제거
+- 외부 라이브러리 인스턴스 파괴 (예: 차트, 지도 라이브러리)
+- 소켓 연결 종료
+
+---
+
+### Step 7: React.memo와 컴포넌트 최적화
+React는 부모 컴포넌트가 렌더링되면 자식 컴포넌트도 기본적으로 다시 렌더링됩니다. `React.memo`를 사용하면 Props가 변하지 않았을 때 자식의 재렌더링을 건너뛰어 성능을 최적화할 수 있습니다.
+
+**실제 코드 (TodoItem.tsx):**
+```tsx
+import { memo } from 'react';
+
+const TodoItem = memo(function TodoItem({ todo, onDelete }: TodoItemProps) {
+  console.log(`TodoItem 렌더링: ${todo.text}`);
+  return (
+    <li>{todo.text}</li>
+  );
+});
+```
+
+#### 💡 최적화 원리
+- **메모이제이션(Memoization)**: 이전에 계산된 결과를 메모리에 저장해두고, 같은 입력이 들어오면 다시 계산하지 않고 저장된 결과를 재사용하는 기법입니다.
+- **얕은 비교(Shallow Comparison)**: `React.memo`는 기본적으로 props의 값을 얕은 비교를 통해 변경 여부를 판단합니다.
+
+| 구분 | 일반 컴포넌트 | React.memo 적용 |
+| :--- | :--- | :--- |
+| **렌더링 조건** | 부모가 변하면 무조건 실행 | Props가 변할 때만 실행 |
+| **장점** | 구조가 단순함 | 불필요한 연산/DOM 조작 방지 |
+
+---
+
+### Step 8: useCallback과 함수 메모이제이션
+`React.memo`를 써도 여전히 `TodoItem`이 리렌더링되는 현상이 있었습니다. 이유는 **함수도 객체**이기 때문입니다. `App` 컴포넌트가 다시 실행될 때마다 `deleteTodo` 함수도 새로 만들어지고, 자식 입장에서는 "Props(onDelete)가 바뀌었다!"고 인식합니다.
+
+이를 해결하기 위해 `useCallback`으로 함수 자체를 기억합니다.
+
+**실제 코드:**
+```tsx
+const deleteTodo = useCallback((id: number) => {
+  setTodos(todos.filter(todo => todo.id !== id));
+}, [todos]); // todos가 바뀔 때만 함수를 새로 만듦
+```
+
+#### 💡 왜 필요한가요?
+1. **참조 동일성 유지**: 함수 내용이 같아도 메모리 주소가 다르면 다른 값으로 취급됩니다. `useCallback`은 의존성이 변하지 않으면 **같은 메모리 주소**의 함수를 반환합니다.
+2. **자식 컴포넌트 최적화**: `React.memo`로 감싸진 자식에게 함수를 props로 넘길 때 필수적입니다.
+
+| 상황 | useCallback 미사용 | useCallback 사용 |
+| :--- | :--- | :--- |
+| **입력 타이핑 시** | `deleteTodo` 재생성됨 → 자식 리렌더링 | `deleteTodo` 유지됨 → 자식 렌더링 건너뜀 |
+| **Todos 변경 시** | `deleteTodo` 재생성됨 | `deleteTodo` 재생성됨 (의도된 동작) |
+
+---
+
+### Step 9: 전역 상태 관리 (Context API vs Zustand)
+앱의 규모가 커지면 부모에서 자식의 자식으로 계속 Props를 넘겨주는 **'Props Drilling'** 문제가 발생합니다. 이를 해결하기 위해 전역 상태 관리를 사용합니다.
+
+#### 1. Context API (React 내장)
+- **개념**: React 컴포넌트 트리 전체에 데이터를 공급하는 통로(Provider)를 만듭니다.
+- **특징**: 별도 설치 없이 사용 가능하지만, 상태가 바뀌면 Provider 하위의 모든 소비 컴포넌트가 리렌더링될 수 있어 최적화가 까다롭습니다.
+- **용도**: 테마(Dark Mode), 언어 설정, 로그인 사용자 정보 등 **자주 변하지 않는 정적 데이터**.
+
+**코드 예시:**
+```tsx
+// 생성
+const ThemeContext = createContext('light');
+
+// 공급 (Provider)
+<ThemeContext.Provider value="dark">
+  <App />
+</ThemeContext.Provider>
+
+// 사용 (Consumer)
+const theme = useContext(ThemeContext);
+```
+
+#### 2. Zustand (외부 라이브러리)
+- **개념**: "독일어(상태)"에서 유래한, 훅(Hook) 기반의 아주 가볍고 직관적인 상태 관리 라이브러리입니다.
+- **특징**: `Provider`로 감쌀 필요가 없고, 상태의 특정 부분만 구독(Selector)하여 불필요한 리렌더링을 자동으로 막아줍니다. Redux보다 훨씬 코드가 짧습니다.
+- **용도**: Todo List, 장바구니, 복잡한 폼 등 **자주 변하고 업데이트가 빈번한 데이터**.
+
+**코드 예시:**
+```tsx
+// 스토어 생성 (create)
+import { create } from 'zustand';
+
+const useStore = create((set) => ({
+  count: 0,
+  inc: () => set((state) => ({ count: state.count + 1 })),
+}));
+
+// 컴포넌트에서 사용
+function Counter() {
+  const { count, inc } = useStore();
+  return <button onClick={inc}>{count}</button>;
+}
+```
+
+#### 🆚 비교 요약
+
+| 구분 | Context API | Zustand |
+| :--- | :--- | :--- |
+| **설치** | 불필요 (내장) | 필요 (`npm install zustand`) |
+| **사용법** | `Provider` 래핑 필요 | `Hook`으로 즉시 사용 |
+| **성능** | 최적화 수동 필요 (Memoization) | 상태 선택(Selector)으로 자동 최적화 |
+| **적합 대상** | 전역 테마, 인증 정보 | 앱의 핵심 비즈니스 로직, 복잡한 상태 |
+
+---
+
+### Step 10: React Router를 이용한 페이지 이동
+SPA(Single Page Application)는 페이지를 새로고침하지 않고 주소창의 경로(URL)만 변경하여 다른 화면을 보여줍니다. 이를 위해 `react-router-dom` 라이브러리를 사용합니다.
+
+#### 1. 설치 및 설정
+```bash
+npm install react-router-dom
+```
+
+`main.tsx`에서 앱 전체를 `<BrowserRouter>`로 감싸줍니다.
+
+```tsx
+import { BrowserRouter } from 'react-router-dom';
+
+<BrowserRouter>
+  <App />
+</BrowserRouter>
+```
+
+#### 2. 라우팅 정의 (App.tsx)
+`Routes`와 `Route` 컴포넌트를 사용하여 경로와 보여줄 컴포넌트를 연결합니다.
+
+```tsx
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="/about" element={<About />} />
+</Routes>
+```
+
+#### 3. 페이지 이동 (Link)
+`<a>` 태그를 쓰면 페이지가 새로고침되므로, 대신 `<Link>` 컴포넌트를 사용합니다.
+
+```tsx
+import { Link } from 'react-router-dom';
+
+<nav>
+  <Link to="/">홈으로</Link>
+  <Link to="/about">소개</Link>
+</nav>
+```
+
+| 구분 | 일반 웹 (`<a>`) | React Router (`<Link>`) |
+| :--- | :--- | :--- |
+| **동작** | 페이지 전체 새로고침 (서버 요청) | JS로 화면만 교체 (클라이언트 라우팅) |
+| **상태** | 모든 State 초기화됨 | State 유지 가능 (SPA) |
+| **속도** | 상대적으로 느림 | 깜빡임 없이 즉시 전환 |
+
+---
+
+### Step 11: 동적 라우팅 (Dynamic Routing)
+URL의 특정 부분을 변수처럼 사용하는 기능입니다. 예를 들어, 상세 페이지를 만들 때 ID 값에 따라 다른 내용을 보여줘야 할 때 사용합니다.
+
+#### 1. 라우트 설정 (App.tsx)
+콜론(`:`)을 사용하여 파라미터가 들어갈 자리를 지정합니다.
+```tsx
+<Route path="/todo/:id" element={<TodoDetail />} />
+```
+
+#### 2. 링크 생성 (TodoItem.tsx)
+템플릿 리터럴을 사용하여 실제 ID 값을 경로에 넣습니다.
+```tsx
+<Link to={`/todo/${todo.id}`}>{todo.text}</Link>
+```
+
+#### 3. 파라미터 읽기 (TodoDetail.tsx)
+`useParams` 훅을 사용하여 URL에 있는 값을 가져옵니다.
+```tsx
+import { useParams, useNavigate } from 'react-router-dom';
+
+function TodoDetail() {
+  const { id } = useParams(); // URL의 :id 부분을 가져옴
+  const navigate = useNavigate(); // 페이지 이동을 위한 훅
+
+  return (
+    <div>
+      <h2>ID: {id}</h2>
+      <button onClick={() => navigate(-1)}>뒤로 가기</button>
+    </div>
+  );
+}
+```
+
+#### 💡 useNavigate 훅
+
+- **`navigate('/path')`**: 특정 경로로 이동
+
+- **`navigate(-1)`**: 뒤로 가기 (히스토리 스택 이용)
+
+- **`navigate(1)`**: 앞으로 가기
+
+
+
+---
+
+
+
+### Step 12: 전역 상태 관리 구현 패턴 비교
+
+`TodoDetail` 페이지에서 할 일 내용을 보여주려면, `todos` 배열이 `Home` 컴포넌트 내부에 갇혀 있으면 안 됩니다. 이를 해결하기 위한 두 가지 방법을 비교합니다.
+
+
+
+#### 1. Context API 방식 (React 내장)
+
+보일러플레이트(준비 코드)가 다소 길지만, 외부 라이브러리 없이 구현 가능합니다.
+
+
+
+**1) Context 생성 (TodoContext.tsx)**
+
+```tsx
+
+import { createContext, useContext, useState } from 'react';
+
+
+
+// 데이터 타입 정의
+
+interface TodoContextType {
+
+  todos: Todo[];
+
+  addTodo: (text: string) => void;
+
+  deleteTodo: (id: number) => void;
+
+}
+
+
+
+// 1. 컨텍스트 생성
+
+const TodoContext = createContext<TodoContextType | null>(null);
+
+
+
+// 2. Provider 생성 (데이터 공급자)
+
+export function TodoProvider({ children }: { children: React.ReactNode }) {
+
+  const [todos, setTodos] = useState<Todo[]>([]);
+
+  // ... addTodo, deleteTodo 로직 ...
+
+
+
+  return (
+
+    <TodoContext.Provider value={{ todos, addTodo, deleteTodo }}>
+
+      {children}
+
+    </TodoContext.Provider>
+
+  );
+
+}
+
+
+
+// 3. Custom Hook (사용 편의성)
+
+export function useTodo() {
+
+  const context = useContext(TodoContext);
+
+  if (!context) throw new Error('Provider 없음!');
+
+  return context;
+
+}
+
+```
+
+
+
+**2) 앱 감싸기 (main.tsx)**
+
+```tsx
+
+<TodoProvider>
+
+  <App />
+
+</TodoProvider>
+
+```
+
+
+
+**3) 사용하기 (Home.tsx / Detail.tsx)**
+
+```tsx
+
+const { todos, deleteTodo } = useTodo(); // 훅으로 바로 사용
+
+```
+
+
+
+---
+
+
+
+#### 2. Zustand 방식 (라이브러리)
+
+Redux DevTools 사용이 가능하고 코드가 압도적으로 간결합니다.
+
+
+
+**1) 스토어 생성 (todoStore.ts)**
+
+```tsx
+
+import { create } from 'zustand';
+
+
+
+interface TodoStore {
+
+  todos: Todo[];
+
+  addTodo: (text: string) => void;
+
+  deleteTodo: (id: number) => void;
+
+}
+
+
+
+export const useTodoStore = create<TodoStore>((set) => ({
+
+  todos: [],
+
+  // 상태 변경 함수가 스토어 내부에 위치 (Action)
+
+  addTodo: (text) => set((state) => ({
+
+    todos: [...state.todos, { id: Date.now(), text }]
+
+  })),
+
+  deleteTodo: (id) => set((state) => ({
+
+    todos: state.todos.filter(t => t.id !== id)
+
+  })),
+
+}));
+
+```
+
+
+
+**2) 사용하기 (어디서든)**
+
+```tsx
+
+// Provider 감싸기 필요 없음!
+
+const todos = useTodoStore((state) => state.todos);
+
+const addTodo = useTodoStore((state) => state.addTodo);
+
+```
+
+
+
+#### 🏆 결론 및 선택
+
+
+
+- **Context API**: 설정이 복잡하고 렌더링 최적화가 어렵지만, 의존성이 없습니다.
+
+
+
+- **Zustand**: 설치가 필요하지만 코드가 깔끔하고 성능 최적화가 자동입니다.
+
+
+
+- **실습 선택**: 우리 프로젝트는 **Zustand**를 사용하여 리팩토링합니다.
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+### Step 13: 실제 코드 작성 및 적용 방법
+
+
+
+두 가지 방식을 모두 코드로 작성해 보았습니다.
+
+
+
+
+
+
+
+#### 1. Context API 적용 방법
+
+
+
+**파일 경로**: `src/context/TodoContext.tsx`
+
+
+
+
+
+
+
+**1) main.tsx 수정 (Provider 감싸기)**
+
+
+
+```tsx
+
+
+
+import { TodoProvider } from './context/TodoContext';
+
+
+
+
+
+
+
+<BrowserRouter>
+
+
+
+  <TodoProvider> {/* 앱 전체에 데이터 공급 */}
+
+
+
+    <App />
+
+
+
+  </TodoProvider>
+
+
+
+</BrowserRouter>
+
+
+
+```
+
+
+
+
+
+
+
+**2) 컴포넌트에서 사용 (Home.tsx)**
+
+
+
+```tsx
+
+
+
+import { useTodoContext } from '../context/TodoContext';
+
+
+
+
+
+
+
+function Home() {
+
+
+
+  const { todos, addTodo, deleteTodo } = useTodoContext();
+
+
+
+  // ... 나머지 로직 동일
+
+
+
+}
+
+
+
+```
+
+
+
+
+
+
+
+#### 2. Zustand 적용 방법 (권장)
+
+
+
+**파일 경로**: `src/store/todoStore.ts`
+
+
+
+
+
+
+
+**1) main.tsx 수정 불필요**
+
+
+
+Zustand는 Provider가 필요 없습니다.
+
+
+
+
+
+
+
+**2) 컴포넌트에서 사용 (Home.tsx)**
+
+
+
+```tsx
+
+
+
+import { useTodoStore } from '../store/todoStore';
+
+
+
+
+
+
+
+function Home() {
+
+
+
+  // 필요한 상태와 함수만 쏙쏙 골라서 가져옴 (Selector)
+
+
+
+  const todos = useTodoStore((state) => state.todos);
+
+
+
+  const addTodo = useTodoStore((state) => state.addTodo);
+
+
+
+  const deleteTodo = useTodoStore((state) => state.deleteTodo);
+
+
+
+  // ... 나머지 로직 동일
+
+
+
+}
+
+
+
+```
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
+### Step 14: 향후 학습 과제
+
+
+
+- [x] React Router를 이용한 페이지 이동 (동적 라우팅 포함)
+
+
+
+- [x] Context API와 Zustand 코드 작성 및 비교
+
+
+
+- [ ] Zustand를 실제 프로젝트(Home.tsx)에 적용하여 리팩토링
+
+
+
+- [ ] TodoDetail 페이지에 전역 상태 연결하여 내용 표시
+
+
+
+

@@ -1,5 +1,6 @@
-// 타입을 별도로 관리하면 좋지만, 간단히 여기서 정의하거나 공유할 수 있습니다.
-// (실무에서는 types.ts 등으로 분리하기도 합니다)
+import { memo } from 'react';
+import { Link } from 'react-router-dom';
+
 export interface Todo {
   id: number;
   text: string;
@@ -7,22 +8,28 @@ export interface Todo {
 
 interface TodoItemProps {
   todo: Todo;
-  onDelete: (id: number) => void; // id를 받아서 void를 반환하는 함수 타입
+  onDelete: (id: number) => void;
 }
 
-function TodoItem({ todo, onDelete }: TodoItemProps) {
+// React.memo로 감싸서 props가 변경되지 않으면 리렌더링을 방지합니다.
+const TodoItem = memo(function TodoItem({ todo, onDelete }: TodoItemProps) {
+  console.log(`TodoItem 렌더링: ${todo.text}`);
+
   return (
     <li className="todo-item">
-      <span>{todo.text}</span>
+      {/* 텍스트를 클릭하면 상세 페이지로 이동 */}
+      <Link to={`/todo/${todo.id}`} style={{ textDecoration: 'none', color: 'inherit', flex: 1 }}>
+        <span>{todo.text}</span>
+      </Link>
+      
       <button 
         className="delete-btn"
-        // 부모에게 받은 함수 실행
         onClick={() => onDelete(todo.id)}
       >
         삭제
       </button>
     </li>
   );
-}
+});
 
 export default TodoItem;
