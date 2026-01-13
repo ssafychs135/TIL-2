@@ -31,7 +31,62 @@ const [inputValue, setInputValue] = useState<string>('');
 
 ---
 
-### Step 2: 불변성(Immutability)과 리스트 렌더링
+### Step 2: 다중 Input 관리 (e.target.name)
+입력 필드가 늘어날 때마다 `useState`를 계속 추가하는 것은 비효율적입니다. 객체 형태의 State 하나로 여러 입력을 관리하는 패턴을 사용합니다.
+
+#### 1. 핵심 원리
+- **HTML `name` 속성**: 각 input을 식별하는 키 역할을 합니다.
+- **Computed Property Name (계산된 속성명)**: ES6 문법인 `[key]: value`를 사용하여 객체의 특정 키 값을 동적으로 업데이트합니다.
+- **Spread Operator (`...`)**: 불변성을 지키기 위해 기존 객체를 먼저 복사합니다.
+
+**실제 코드 패턴:**
+```tsx
+// 1. 객체로 상태 초기화
+const [inputs, setInputs] = useState({
+  username: '',
+  email: '',
+});
+
+// 2. 비구조화 할당으로 값 추출 (편의성)
+const { username, email } = inputs;
+
+const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value } = e.target; // input의 name과 value 추출
+
+  setInputs({
+    ...inputs,       // 기존 객체 복사 (필수!)
+    [name]: value,   // name 키에 해당하는 값만 덮어쓰기
+  });
+};
+
+// 3. JSX 적용
+return (
+  <div>
+    <input 
+      name="username" 
+      value={username} 
+      onChange={onChange} 
+      placeholder="이름"
+    />
+    <input 
+      name="email" 
+      value={email} 
+      onChange={onChange} 
+      placeholder="이메일"
+    />
+  </div>
+);
+```
+
+| 구분 | 개별 관리 | 통합 관리 (Best Practice) |
+| :--- | :--- | :--- |
+| **State 개수** | 입력 필드 수만큼 (`useState` n개) | 1개 (객체) |
+| **핸들러 함수** | 각각 따로 생성 | 1개로 재사용 가능 |
+| **확장성** | 필드 추가 시 코드량 증가 | 필드만 추가하면 됨 |
+
+---
+
+### Step 3: 불변성(Immutability)과 리스트 렌더링
 React는 상태의 **참조값**이 바뀌어야 업데이트를 감지합니다. 따라서 배열을 직접 수정(`push`)하지 않고 스프레드 연산자를 사용합니다.
 
 **실제 코드:**
@@ -57,7 +112,39 @@ const addTodo = () => {
 
 ---
 
-### Step 3: 데이터 삭제 (Filter)
+### Step 4: 조건부 스타일링 (Template Literals & Class Toggling)
+특정 상태(예: 완료 여부, 활성화 상태)에 따라 UI의 스타일을 동적으로 바꿔야 할 때 템플릿 리터럴을 활용합니다.
+
+#### 1. 핵심 패턴
+백틱(`` ` ``)을 사용하여 기본 클래스와 조건부 클래스를 하나의 문자열로 합칩니다.
+
+**실제 코드:**
+```tsx
+// 1. 상태 정의
+const [isDone, setIsDone] = useState(false);
+
+// 2. 템플릿 리터럴을 활용한 클래스 결합
+// isDone이 true면 'completed' 클래스가 추가됨
+<li className={`todo-item ${isDone ? 'completed' : ''}`}>
+  {text}
+  <button onClick={() => setIsDone(!isDone)}>토글</button>
+</li>
+```
+
+#### 2. Vue와 비교
+
+| 구분 | Vue (`:class`) | React (Template Literals) |
+| :--- | :--- | :--- |
+| **문법** | `:class="{ active: isActive }"` | `className={`item ${isActive ? 'active' : ''}`}` |
+| **특징** | 객체 기반의 직관적인 문법 | 순수 JS 문자열 연산 (유연함) |
+
+#### 💡 팁: 더 깔끔한 관리를 원한다면?
+클래스가 너무 많아져서 문자열 연산이 복잡해질 경우, `clsx`나 `classnames` 같은 외부 라이브러리를 사용하면 Vue와 유사한 객체 기반 문법을 쓸 수 있습니다.
+- 예: `className={clsx('item', { active: isActive, hidden: isHidden })}`
+
+---
+
+### Step 5: 데이터 삭제 (Filter)
 배열에서 요소를 삭제할 때도 원본을 건드리는 `splice` 대신, 특정 항목을 제외한 새로운 배열을 반환하는 **`filter`**를 사용합니다.
 
 **실제 코드:**
@@ -74,7 +161,7 @@ const deleteTodo = (id: number) => {
 
 ---
 
-### Step 4: 컴포넌트 분리와 Props 전달
+### Step 6: 컴포넌트 분리와 Props 전달
 자식이 부모의 상태를 변경해야 할 때, 부모는 함수 자체를 Props로 전달합니다.
 
 **실제 코드 (자식 컴포넌트):**
@@ -101,7 +188,7 @@ function TodoItem({ todo, onDelete }: TodoItemProps) {
 
 ---
 
-### Step 5: 로컬 스토리지와 Custom Hook
+### Step 7: 로컬 스토리지와 Custom Hook
 `useEffect`를 사용해 상태 변경 시 로컬 스토리지에 저장하는 부수 효과를 처리하고, 이를 Custom Hook으로 분리하여 재사용합니다.
 
 **실제 코드 (Custom Hook):**
@@ -127,7 +214,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
 ---
 
-### Step 6: useEffect의 생명주기와 부수 효과 (Side Effects)
+### Step 8: useEffect의 생명주기와 부수 효과 (Side Effects)
 `useEffect`는 컴포넌트의 렌더링 이후에 발생하는 '부수 효과'를 처리합니다. Vue의 생명주기 훅(Life Cycle Hooks)과 Watcher의 기능을 하나로 합친 것과 같습니다.
 
 **실제 코드:**
@@ -200,7 +287,7 @@ useEffect(() => {
 
 ---
 
-### Step 7: React.memo와 컴포넌트 최적화
+### Step 9: React.memo와 컴포넌트 최적화
 React는 부모 컴포넌트가 렌더링되면 자식 컴포넌트도 기본적으로 다시 렌더링됩니다. `React.memo`를 사용하면 Props가 변하지 않았을 때 자식의 재렌더링을 건너뛰어 성능을 최적화할 수 있습니다.
 
 **실제 코드 (TodoItem.tsx):**
@@ -226,7 +313,7 @@ const TodoItem = memo(function TodoItem({ todo, onDelete }: TodoItemProps) {
 
 ---
 
-### Step 8: useCallback과 함수 메모이제이션
+### Step 10: useCallback과 함수 메모이제이션
 `React.memo`를 써도 여전히 `TodoItem`이 리렌더링되는 현상이 있었습니다. 이유는 **함수도 객체**이기 때문입니다. `App` 컴포넌트가 다시 실행될 때마다 `deleteTodo` 함수도 새로 만들어지고, 자식 입장에서는 "Props(onDelete)가 바뀌었다!"고 인식합니다.
 
 이를 해결하기 위해 `useCallback`으로 함수 자체를 기억합니다.
@@ -249,7 +336,7 @@ const deleteTodo = useCallback((id: number) => {
 
 ---
 
-### Step 9: 전역 상태 관리 (Context API vs Zustand)
+### Step 11: 전역 상태 관리 (Context API vs Zustand)
 앱의 규모가 커지면 부모에서 자식의 자식으로 계속 Props를 넘겨주는 **'Props Drilling'** 문제가 발생합니다. 이를 해결하기 위해 전역 상태 관리를 사용합니다.
 
 #### 1. Context API (React 내장)
@@ -304,7 +391,7 @@ function Counter() {
 
 ---
 
-### Step 10: React Router를 이용한 페이지 이동
+### Step 12: React Router를 이용한 페이지 이동
 SPA(Single Page Application)는 페이지를 새로고침하지 않고 주소창의 경로(URL)만 변경하여 다른 화면을 보여줍니다. 이를 위해 `react-router-dom` 라이브러리를 사용합니다.
 
 #### 1. 설치 및 설정
@@ -352,7 +439,7 @@ import { Link } from 'react-router-dom';
 
 ---
 
-### Step 11: 동적 라우팅 (Dynamic Routing)
+### Step 13: 동적 라우팅 (Dynamic Routing)
 URL의 특정 부분을 변수처럼 사용하는 기능입니다. 예를 들어, 상세 페이지를 만들 때 ID 값에 따라 다른 내용을 보여줘야 할 때 사용합니다.
 
 #### 1. 라우트 설정 (App.tsx)
@@ -399,7 +486,7 @@ function TodoDetail() {
 
 
 
-### Step 12: 전역 상태 관리 구현 패턴 비교
+### Step 14: 전역 상태 관리 구현 패턴 비교
 
 `TodoDetail` 페이지에서 할 일 내용을 보여주려면, `todos` 배열이 `Home` 컴포넌트 내부에 갇혀 있으면 안 됩니다. 이를 해결하기 위한 두 가지 방법을 비교합니다.
 
@@ -599,7 +686,7 @@ const addTodo = useTodoStore((state) => state.addTodo);
 
 
 
-### Step 13: 실제 코드 작성 및 적용 방법
+### Step 15: 실제 코드 작성 및 적용 방법
 
 
 
@@ -791,7 +878,7 @@ function Home() {
 
 
 
-### Step 14: 향후 학습 과제
+### Step 16: 향후 학습 과제
 
 
 
@@ -809,6 +896,41 @@ function Home() {
 
 - [ ] TodoDetail 페이지에 전역 상태 연결하여 내용 표시
 
+---
 
+## 3. 리액트 용어 정리 (Glossary)
 
+이 문서에서 사용된 주요 리액트 및 웹 개발 용어에 대한 설명입니다.
 
+### 핵심 개념 (Core Concepts)
+- **Vite**: 빠르고 가벼운 최신 프론트엔드 빌드 도구입니다. 리액트 프로젝트를 생성하고 실행하는 데 사용됩니다.
+- **State (상태)**: 컴포넌트 내부에서 관리되는 동적인 데이터입니다. 값이 변하면 리액트는 컴포넌트를 리렌더링하여 UI를 업데이트합니다.
+- **Props (Properties)**: 부모 컴포넌트가 자식 컴포넌트에게 전달하는 읽기 전용 데이터입니다.
+- **One-way Data Flow (단방향 데이터 흐름)**: 데이터가 부모에서 자식으로 한 방향(아래)으로만 흐르는 리액트의 특징입니다.
+- **Immutability (불변성)**: 상태를 직접 수정하지 않고, 새로운 값을 만들어 교체하는 원칙입니다. 리액트가 변경 사항을 감지하기 위해 필요합니다.
+- **Side Effects (부수 효과)**: 데이터 가져오기, 구독 설정, 수동 DOM 조작 등 컴포넌트 렌더링 외에 발생하는 모든 작업을 의미합니다.
+
+### 훅 (Hooks)
+- **useState**: 함수형 컴포넌트에서 상태를 관리할 수 있게 해주는 훅입니다.
+- **useEffect**: 함수형 컴포넌트에서 부수 효과(Side Effects)를 수행할 수 있게 해주는 훅입니다. (생명주기 관리)
+- **useCallback**: 함수를 메모이제이션(기억)하여 불필요한 재생성을 방지하는 훅입니다. 최적화에 사용됩니다.
+- **Custom Hook**: 자주 사용되는 로직을 분리하여 재사용 가능하게 만든 사용자 정의 훅입니다. (`use`로 시작하는 함수)
+- **Dependency Array (의존성 배열)**: `useEffect`나 `useCallback` 등이 언제 재실행될지 결정하는 배열입니다.
+- **Cleanup Function (정리 함수)**: `useEffect`에서 반환하는 함수로, 컴포넌트가 사라지거나 업데이트되기 전에 실행되어 메모리 누수 등을 방지합니다.
+
+### 라우팅 (Routing)
+- **SPA (Single Page Application)**: 페이지 새로고침 없이 동적으로 콘텐츠를 갱신하는 웹 애플리케이션입니다.
+- **React Router**: 리액트에서 SPA 라우팅을 구현하기 위한 표준 라이브러리입니다.
+- **Dynamic Routing (동적 라우팅)**: URL의 특정 부분(파라미터)에 따라 다른 내용을 보여주는 라우팅 방식입니다. (예: `/todo/:id`)
+- **useParams**: URL 경로에 포함된 파라미터 값(예: `:id`)을 가져오는 훅입니다.
+- **useNavigate**: 코드로 페이지를 이동시킬 때 사용하는 훅입니다.
+
+### 상태 관리 (State Management)
+- **Context API**: 리액트 내장 기능으로, Props Drilling 없이 컴포넌트 트리 전체에 데이터를 공급할 수 있습니다.
+- **Props Drilling**: 데이터를 깊은 곳에 있는 자식에게 전달하기 위해 중간 컴포넌트들을 거쳐 Props를 계속 내려주는 현상입니다.
+- **Zustand**: 간결한 문법과 자동 최적화를 제공하는 인기 있는 외부 상태 관리 라이브러리입니다.
+- **Selector (선택자)**: 상태 저장소(Store)에서 필요한 데이터만 골라내는 함수입니다. (Zustand 등에서 사용)
+
+### 최적화 (Optimization)
+- **Memoization (메모이제이션)**: 이전에 계산한 값을 메모리에 저장해두고 재사용하여 연산 속도를 높이는 기술입니다.
+- **React.memo**: 컴포넌트의 Props가 바뀌지 않았다면 리렌더링을 건너뛰도록 설정하는 고차 컴포넌트(HOC)입니다.
